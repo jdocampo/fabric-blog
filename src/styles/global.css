@@ -1,0 +1,509 @@
+/* ============================================================
+   Design tokens
+   Palette: cool paper + deep ink + one signal magenta.
+   The magenta is spent only on commit stamps and links — nothing else.
+   ============================================================ */
+:root {
+  --paper: #eceef1;
+  --paper-panel: #e2e5ea;
+  --ink: #12141b;
+  --ink-soft: #575d6c;
+  --ink-faint: #878d9c;
+  --rule: #c9cdd6;
+  --signal: #c1006b;
+  --signal-wash: #f7dceb;
+  --code-bg: #171a21;
+  --code-ink: #c6ccd6;
+
+  --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Newsreader', ui-serif, Georgia, serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --measure: 34rem;
+  --gutter: clamp(1.25rem, 4vw, 3rem);
+  --spine: 5.5rem; /* width of the version-stamp column */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #101219;
+    --paper-panel: #171a22;
+    --ink: #e7e9ee;
+    --ink-soft: #a0a6b4;
+    --ink-faint: #6d7484;
+    --rule: #2a2e39;
+    --signal: #ff56a8;
+    --signal-wash: #2a0f1e;
+    --code-bg: #080a0e;
+    --code-ink: #c6ccd6;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  font-optical-sizing: auto;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+}
+
+a:hover {
+  text-decoration-color: var(--signal);
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 3px;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+.shell {
+  max-width: 62rem;
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.6rem 1rem;
+  z-index: 10;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
+/* ============================================================
+   Masthead
+   ============================================================ */
+.masthead {
+  border-bottom: 1px solid var(--rule);
+}
+
+.masthead__inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-block: 1.1rem;
+}
+
+.masthead__name {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.masthead__nav {
+  display: flex;
+  gap: 1.4rem;
+}
+
+.masthead__nav a {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+
+.masthead__nav a:hover,
+.masthead__nav a[aria-current='page'] {
+  color: var(--signal);
+}
+
+/* ============================================================
+   Hero — the thesis
+   ============================================================ */
+.hero {
+  padding-block: clamp(3.5rem, 9vw, 7rem) clamp(2.5rem, 6vw, 4.5rem);
+  border-bottom: 1px solid var(--rule);
+}
+
+.hero__eyebrow {
+  color: var(--ink-faint);
+  margin: 0 0 1.5rem;
+}
+
+.hero__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2.4rem, 7.5vw, 4.6rem);
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+  margin: 0;
+  max-width: 16ch;
+  font-variation-settings: 'opsz' 48, 'wdth' 100;
+}
+
+.hero__title em {
+  font-style: normal;
+  color: var(--signal);
+}
+
+.hero__lede {
+  margin: 1.75rem 0 0;
+  max-width: var(--measure);
+  font-size: 1.15rem;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+/* ============================================================
+   Signature: the commit log
+   A blog is an append-only log. Each post is a commit, numbered in the
+   order it landed, hung off a single spine rule.
+   ============================================================ */
+.log {
+  padding-block: clamp(2rem, 5vw, 3.5rem) 4rem;
+}
+
+.log__heading {
+  margin: 0 0 0.5rem;
+  color: var(--ink-faint);
+}
+
+.log__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.commit {
+  display: grid;
+  grid-template-columns: var(--spine) 1fr;
+  gap: 0 clamp(1rem, 3vw, 2.25rem);
+  border-top: 1px solid var(--rule);
+  position: relative;
+}
+
+.commit:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+
+/* the spine */
+.commit::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--spine) - 1px);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--rule);
+}
+
+/* the notch where this commit hangs */
+.commit::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--spine) - 4px);
+  top: 2.35rem;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 1px solid var(--ink-faint);
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.commit:hover::after,
+.commit:focus-within::after {
+  background: var(--signal);
+  border-color: var(--signal);
+  transform: scale(1.35);
+}
+
+.commit__stamp {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  padding-block: 2rem 2.25rem;
+  text-align: right;
+  padding-right: 1.1rem;
+  line-height: 1.5;
+}
+
+.commit__version {
+  display: block;
+  color: var(--ink-soft);
+  font-weight: 600;
+  transition: color 140ms ease;
+}
+
+.commit:hover .commit__version,
+.commit:focus-within .commit__version {
+  color: var(--signal);
+}
+
+.commit__body {
+  padding-block: 1.75rem 2.25rem;
+  min-width: 0;
+}
+
+.commit__title {
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 3vw, 1.85rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0 0 0.5rem;
+  font-variation-settings: 'opsz' 24;
+}
+
+.commit__title a {
+  text-decoration: none;
+}
+
+.commit__title a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.commit__desc {
+  margin: 0;
+  color: var(--ink-soft);
+  max-width: var(--measure);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 1rem;
+  position: relative;
+  z-index: 1;
+}
+
+.tag {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  background: var(--paper-panel);
+  border: 1px solid var(--rule);
+  padding: 0.15rem 0.5rem;
+  text-decoration: none;
+}
+
+.tag:hover {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+/* staggered reveal */
+@media (prefers-reduced-motion: no-preference) {
+  .commit {
+    animation: rise 520ms cubic-bezier(0.2, 0.6, 0.2, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 55ms);
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+  }
+}
+
+/* ============================================================
+   Article
+   ============================================================ */
+.article {
+  padding-block: clamp(3rem, 7vw, 5rem) 4rem;
+}
+
+.article__head {
+  max-width: var(--measure);
+  margin-bottom: 3rem;
+}
+
+.article__stamp {
+  color: var(--ink-faint);
+  margin: 0 0 1.25rem;
+}
+
+.article__stamp b {
+  color: var(--signal);
+  font-weight: 600;
+}
+
+.article__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2rem, 5.5vw, 3.1rem);
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  margin: 0 0 1rem;
+  font-variation-settings: 'opsz' 36;
+}
+
+.article__desc {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 1.15rem;
+}
+
+.prose {
+  max-width: var(--measure);
+}
+
+.prose > * + * {
+  margin-top: 1.35em;
+}
+
+.prose h2,
+.prose h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-top: 2.75em;
+  margin-bottom: 0.6em;
+  font-variation-settings: 'opsz' 20;
+}
+
+.prose h2 {
+  font-size: 1.5rem;
+  padding-top: 0.9em;
+  border-top: 1px solid var(--rule);
+}
+
+.prose h3 {
+  font-size: 1.18rem;
+}
+
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--paper-panel);
+  border: 1px solid var(--rule);
+  padding: 0.1em 0.32em;
+}
+
+.prose pre {
+  background: var(--code-bg) !important;
+  color: var(--code-ink);
+  padding: 1.15rem 1.25rem;
+  overflow-x: auto;
+  font-size: 0.84rem;
+  line-height: 1.6;
+  /* code is allowed to break the measure — it needs the room */
+  width: min(100%, 46rem);
+  border-left: 2px solid var(--signal);
+}
+
+.prose pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+.prose blockquote {
+  margin-inline: 0;
+  padding-left: 1.25rem;
+  border-left: 1px solid var(--rule);
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.prose th,
+.prose td {
+  text-align: left;
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.prose th {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin-block: 2.5em;
+}
+
+/* ============================================================
+   Footer
+   ============================================================ */
+.footer {
+  border-top: 1px solid var(--rule);
+  padding-block: 2rem 3rem;
+  color: var(--ink-faint);
+}
+
+.footer__inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  justify-content: space-between;
+}
+
+.footer a {
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+
+.footer a:hover {
+  color: var(--signal);
+}
+
+@media (max-width: 34rem) {
+  :root {
+    --spine: 3.9rem;
+  }
+  .commit__stamp {
+    font-size: 0.66rem;
+  }
+}

@@ -1,0 +1,32 @@
+---
+import Base from '../../layouts/Base.astro';
+import Commit from '../../components/Commit.astro';
+import { getPosts } from '../../lib/posts';
+
+export async function getStaticPaths() {
+  const posts = await getPosts();
+  const tags = [...new Set(posts.flatMap((p) => p.data.tags))];
+  return tags.map((tag) => ({
+    params: { tag },
+    props: { tag, posts: posts.filter((p) => p.data.tags.includes(tag)) },
+  }));
+}
+
+const { tag, posts } = Astro.props;
+---
+
+<Base title={`Tagged ${tag}`} description={`Posts tagged ${tag}.`}>
+  <section class="hero">
+    <div class="shell">
+      <p class="mono hero__eyebrow">FILTER · {tag}</p>
+      <h1 class="hero__title">{posts.length} {posts.length === 1 ? 'entry' : 'entries'}</h1>
+    </div>
+  </section>
+  <section class="log">
+    <div class="shell">
+      <ol class="log__list">
+        {posts.map((post, i) => <Commit post={post} index={i} />)}
+      </ol>
+    </div>
+  </section>
+</Base>

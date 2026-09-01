@@ -1,0 +1,73 @@
+---
+import '../styles/global.css';
+import { SITE } from '../site';
+
+interface Props {
+  title?: string;
+  description?: string;
+  canonical?: string;
+}
+
+const { title, description = SITE.description, canonical } = Astro.props;
+const pageTitle = title ? `${title} — ${SITE.title}` : `${SITE.title} — ${SITE.role}`;
+const canonicalURL = canonical ?? new URL(Astro.url.pathname, Astro.site).href;
+const path = Astro.url.pathname.replace(/\/$/, '') || '/';
+---
+
+<!doctype html>
+<html lang={SITE.lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalURL} />
+    <link rel="alternate" type="application/rss+xml" title={SITE.title} href="/rss.xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalURL} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..500&display=swap"
+    />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="masthead">
+      <div class="shell masthead__inner">
+        <a class="masthead__name" href="/">{SITE.title}</a>
+        <nav class="masthead__nav" aria-label="Primary">
+          <a href="/" aria-current={path === '/' ? 'page' : undefined}>Log</a>
+          <a href="/about" aria-current={path === '/about' ? 'page' : undefined}>About</a>
+          <a href="/rss.xml">RSS</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <slot />
+    </main>
+
+    <footer class="footer">
+      <div class="shell footer__inner">
+        <span class="mono">© {new Date().getFullYear()} {SITE.author}</span>
+        <span class="mono">
+          {
+            SITE.links.map((l) => (
+              <>
+                <a href={l.href} rel="me">
+                  {l.label}
+                </a>{' '}
+              </>
+            ))
+          }
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

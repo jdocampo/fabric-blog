@@ -1,0 +1,32 @@
+---
+import Base from '../layouts/Base.astro';
+import Commit from '../components/Commit.astro';
+import { getPosts } from '../lib/posts';
+
+const posts = await getPosts();
+const head = posts[0];
+---
+
+<Base>
+  <section class="hero">
+    <div class="shell">
+      <p class="mono hero__eyebrow">
+        HEAD → {head ? `${head.version} · ${head.data.pubDate.toISOString().slice(0, 10)}` : 'empty log'}
+      </p>
+      <h1 class="hero__title">Working notes from inside <em>the lakehouse</em>.</h1>
+      <p class="hero__lede">
+        Spark tuning, Delta table maintenance and the parts of Microsoft Fabric the docs
+        leave out. Written down while the job was still running, so the details survive.
+      </p>
+    </div>
+  </section>
+
+  <section class="log">
+    <div class="shell">
+      <p class="mono log__heading">{posts.length} entries · newest first</p>
+      <ol class="log__list">
+        {posts.map((post, i) => <Commit post={post} index={i} />)}
+      </ol>
+    </div>
+  </section>
+</Base>

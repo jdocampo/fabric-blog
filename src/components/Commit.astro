@@ -1,0 +1,35 @@
+---
+import { formatDate } from '../lib/posts';
+import type { Post } from '../lib/posts';
+
+interface Props {
+  post: Post;
+  index?: number;
+}
+
+const { post, index = 0 } = Astro.props;
+---
+
+<li class="commit" style={`--i:${index}`}>
+  <div class="commit__stamp">
+    <span class="commit__version">{post.version}</span>
+    <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
+  </div>
+  <div class="commit__body">
+    <h2 class="commit__title">
+      <a href={`/blog/${post.id}/`}>{post.data.title}</a>
+    </h2>
+    <p class="commit__desc">{post.data.description}</p>
+    {
+      post.data.tags.length > 0 && (
+        <div class="tags">
+          {post.data.tags.map((tag) => (
+            <a class="tag" href={`/tags/${tag}/`}>
+              {tag}
+            </a>
+          ))}
+        </div>
+      )
+    }
+  </div>
+</li>

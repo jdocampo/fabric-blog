@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant S as Schedule clock
+    participant P as Live Pool
+    participant C as Hydrated capacity
+    participant N as Notebook
+
+    S->>P: 00:00 Start cycle
+    P->>C: Hydrate (5 minutes)
+    C-->>P: 00:05 Ready
+    Note over C: Idle timer starts (20 minutes)
+    C-->>P: 00:25 Idle deactivation
+    N->>P: 00:27 Request session
+    P-->>N: Miss: no ready capacity
+    S->>P: 00:35 Reactivation trigger
+    P->>C: Hydrate replacement (5 minutes)
+    C-->>P: 00:40 Ready
+    N->>P: 00:42 Request session
+    P-->>N: Hit: assign refreshed capacity
+    Note over S,C: Reactivation follows the schedule clock.<br/>Notebook completion resets neither timer.

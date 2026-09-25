@@ -23,7 +23,9 @@ const head = posts[0];
 
   <section class="log">
     <div class="shell">
-      <p class="mono log__heading">{posts.length} entries · newest first</p>
+      <p class="mono log__heading">
+        {posts.length} {posts.length === 1 ? 'entry' : 'entries'} · newest first
+      </p>
       <ol class="log__list">
         {posts.map((post, i) => <Commit post={post} index={i} />)}
       </ol>

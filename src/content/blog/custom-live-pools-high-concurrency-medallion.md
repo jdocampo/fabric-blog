@@ -1,12 +1,12 @@
 ---
-title: 'Faster or cheaper? Custom Live Pools and High Concurrency for Fabric medallion ETL'
-description: 'Measured performance and CU trade-offs across Starter Pools, Custom Live Pools, and High Concurrency for a Bronze-Silver-Gold pipeline.'
+title: 'Faster or cheaper? Choosing Custom Live Pools and High Concurrency for Microsoft Fabric medallion ETL pipelines'
+description: 'Performance and CU trade-offs across Starter Pools, Custom Live Pools, and High Concurrency for a Bronze-Silver-Gold pipeline.'
 pubDate: 2026-09-01
 tags: ['fabric', 'spark', 'data-engineering', 'performance']
-draft: true
+draft: false
 ---
 
-> **Benchmark status:** The article includes the first core S-A-B-C-D measurements. The sample contains two successful runs per scenario, so use the results as directional evidence and repeat the protocol under representative production conditions.
+# Faster or cheaper? Choosing Custom Live Pools and High Concurrency for Microsoft Fabric medallion ETL pipelines
 
 ## Motivation: answering the Spark cost-performance question
 
@@ -84,13 +84,43 @@ For the most predictable startup, use a published environment with libraries in 
 
 ### Availability is finite
 
-The configured maximum cluster count is a hard ceiling; the Live Pool does not scale beyond it. If all compatible hydrated clusters are busy, additional notebooks use on-demand provisioning, which can take approximately 3 to 5 minutes or longer depending on library dependencies. ([source][live-overview])
+The configured maximum cluster count is a hard ceiling; the Live Pool does not scale beyond it. If all compatible hydrated clusters are busy, additional notebooks use on-demand provisioning, which can take approximately 3 to 5 minutes or longer depending on library dependencies and the presence of Managed Private Endpoints. ([source][live-overview])
 
-The Fabric product team has confirmed an additional planning rule:
+### Idle deactivation and reactivation use different timers
+
+Idle deactivation and automatic reactivation are pool-level behaviors, not timers that restart when a notebook finishes. The idle timer applies to unused Live Pool capacity after hydration makes it ready. The reactivation timer follows its configured cadence from the schedule cycle and can prepare fresh capacity up to the pool maximum.
+
+As a result, a notebook that arrives after idle deactivation but before reactivation finishes can still miss the Live Pool. A notebook that arrives after the new hydration completes can use the refreshed capacity. For example, if hydration takes five minutes, idle deactivation is 20 minutes, and reactivation is every 35 minutes, unused capacity can deactivate at approximately minute 25 and become available again only after the minute-35 reactivation has finished provisioning:
+
+```mermaid
+sequenceDiagram
+    participant S as Schedule clock
+    participant P as Live Pool
+    participant C as Hydrated capacity
+    participant N as Notebook
+
+    S->>P: 00:00 Start cycle
+    P->>C: Hydrate (5 minutes)
+    C-->>P: 00:05 Ready
+    Note over C: Idle timer starts (20 minutes)
+    C-->>P: 00:25 Idle deactivation
+    N->>P: 00:27 Request session
+    P-->>N: Miss: no ready capacity
+    S->>P: 00:35 Reactivation trigger
+    P->>C: Hydrate replacement (5 minutes)
+    C-->>P: 00:40 Ready
+    N->>P: 00:42 Request session
+    P-->>N: Hit: assign refreshed capacity
+    Note over S,C: Reactivation follows the schedule clock.<br/>Notebook completion resets neither timer.
+```
+
+> **Configure the timers with a buffer.** Set the reactivation interval far enough beyond the idle deactivation point for expiry and deallocation to complete. If reactivation fires too close to that transition, its provisioning attempt can overlap with the expiring clusters and be deduplicated or cancelled. Account for hydration time because idle deactivation starts after capacity becomes ready, whereas reactivation follows the schedule-cycle clock.
+
+### Clusters are not reusable within an hydration cycle
 
 > A Live Pool hydrated cluster is single-use for one Spark session within a Live Pool schedule/reactivation cycle.
 
-This is current product behavior, not a conclusion inferred from the benchmark in this article. It means I would not size the pool only from the maximum number of simultaneously running notebooks. For independent, non-High-Concurrency sessions, I would also consider how many session starts are expected before the next successful reactivation.
+It means I would not size the pool only from the maximum number of simultaneously running notebooks. For independent, non-High-Concurrency sessions, I would also consider how many session starts are expected before the next successful reactivation.
 
 For example, if a cycle begins with two available hydrated clusters and three independent sessions start sequentially, the first two can hit warm capacity while the third can take the on-demand path, even if the first session has already ended.
 
@@ -129,7 +159,7 @@ A Live Pool is therefore most attractive when it avoids a real provisioning dela
 
 In standard mode, each notebook activity creates its own Spark session. In High Concurrency mode, compatible notebook workloads share one Spark application. Fabric creates a separate read-eval-print loop (REPL) core for each workload, providing execution-state isolation, and uses FAIR scheduling across REPL cores to reduce starvation risk. ([source][hc-overview])
 
-For notebooks triggered by pipelines, Fabric automatically packs compatible notebook activities into active High Concurrency sessions. Omitting a session tag does not opt out: compatible untagged activities can still be grouped on a best-effort basis. A shared session tag makes the intended grouping explicit, while different tags create separate grouping boundaries. ([source][hc-pipelines])
+When you enable High Concurrency mode for pipelines, Fabric automatically packs compatible notebook activities into active High Concurrency sessions. Omitting a session tag does not opt out: compatible untagged activities can still be grouped on a best-effort basis. A shared session tag makes the intended grouping explicit, while different tags create separate grouping boundaries. ([source][hc-pipelines])
 
 To share, activities must:
 
@@ -141,7 +171,7 @@ To share, activities must:
 
 If a condition differs, Fabric creates another Spark session. ([source][hc-pipelines])
 
-The default sharing limit is five notebooks per High Concurrency session. Current documentation also describes an environment property, `spark.highConcurrency.max`, that can raise the limit to 50. ([source][hc-overview]) Do not increase density only because the setting exists: validate executor contention, memory pressure, and failure isolation under representative load.
+The default sharing limit is five notebooks per High Concurrency session. Current documentation also describes an environment property, `spark.highConcurrency.max`, that can raise the limit to 50 ([source][hc-overview]). Do not increase density only because the setting exists: validate executor contention, memory pressure, and failure isolation under representative load.
 
 ### What High Concurrency improves
 
@@ -230,117 +260,75 @@ However, the combination has two independent consumption levers:
 
 Optimize both. Under provisioned capacity, this protects capacity headroom; under Autoscale Billing, it also reduces billed Spark consumption.
 
-## Measured core benchmark
+## Benchmark: one pipeline, six compute configurations
 
-The core lab used a deliberately simple sequential pipeline:
-
-```text
-Bronze -> Silver -> Gold
-```
-
-Every run processed the same deterministic 20-million-row workload on an F32 provisioned capacity. S, A, and B used three separate Spark applications. C and D used one High Concurrency application, with Silver and Gold attaching to the session created by Bronze. D was right-sized to one hydrated cluster because it required one independent Spark application.
-
-The table reports two successful runs per scenario. Included CU-seconds contain notebook `Notebook HC Pipeline Run` operations and Live Pool environment `Custom Pool Startup` and `Custom Pool Ready` operations. Pipeline orchestration `ActivityRun` CU is excluded.
-
-| Scenario | Average pipeline time | Range | Spark applications | Average notebook CU-s | Average environment CU-s | Average included CU-s | Runtime versus S | CU versus S |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| S - Starter, no HC | 710.44 s | 679.22-741.66 | 3 | 4,629.01 | 0.00 | **4,629.01** | Baseline | Baseline |
-| A - On-demand, no HC | 735.71 s | 723.53-747.90 | 3 | 2,979.70 | 0.00 | **2,979.70** | 3.6% slower | 35.6% lower |
-| B - Live Pool, no HC | 216.20 s | 209.99-222.40 | 3 | 7,214.36 | 521.33 | **7,735.70** | 69.6% faster | 67.1% higher |
-| C - On-demand with HC | 391.04 s | 385.82-396.25 | 1 | 1,430.39 | 0.00 | **1,430.39** | 45.0% faster | 69.1% lower |
-| D - Live Pool with HC | 192.60 s | 184.07-201.13 | 1 | 3,088.14 | 350.12 | **3,438.27** | 72.9% faster | 25.7% lower |
-
-The complete run IDs, stage timings, hydration operation IDs, and CU-attribution method are published in the [benchmark results and raw measurements](/blog/custom-live-pools-high-concurrency-benchmark-results/).
-
-Because this is a two-run sample, the numbers are directional rather than statistically conclusive. Repeat the same test matrix with production data layout, concurrency, and transformation complexity before making a final production decision.
-
-## What the measurements show
-
-### High Concurrency was the CU-efficiency winner
-
-C reduced average duration by 45.0% and CU consumption by 69.1% relative to S. It paid the on-demand acquisition cost once, then reused the application for Silver and Gold. At 1,430.39 CU-seconds, it used less than half the CUs of every other option.
-
-This is the strongest argument for testing High Concurrency before adding prehydrated capacity: session reuse can improve both runtime and capacity efficiency without maintaining a Live Pool.
-
-### The right-sized combined option was fastest
-
-D completed in 192.60 seconds on average, 72.9% faster than S and 50.7% faster than C. It combined a warm first acquisition with High Concurrency attachment for later stages.
-
-That additional latency improvement was not free. D consumed about 2.40 times C's CUs. The business decision is therefore whether reducing the average pipeline from 391 seconds to 193 seconds is worth the additional capacity consumption.
-
-### Live Pool without High Concurrency was fast but expensive
-
-B reduced runtime by 69.6%, but it created three independent Spark applications. Their active periods and two-minute driver tails overlapped, increasing average consumption to 7,735.70 CU-seconds: 67.1% more than S and 2.25 times the right-sized D configuration.
-
-This result illustrates why Live Pool sizing must follow the number of independent Spark applications, not merely the number of notebook activities. If compatible stages can share one application, High Concurrency reduces both session creation and hydrated-cluster demand.
-
-### On-demand independent sessions did not improve latency
-
-A consumed 35.6% fewer CUs than S but was 3.6% slower. For this workload, changing the acquisition path without reducing the three independent sessions did not improve end-to-end duration.
-
-## Recommendations from the benchmark
-
-### Start with High Concurrency for compatible notebook chains
-
-For sequential Bronze-Silver-Gold activities with matching identity, workspace, lakehouse, environment, libraries, and compute, use one intentional session tag and validate that later stages attach to the initiating session. C provided the best capacity efficiency in this benchmark.
-
-Do not leave isolation to chance when workspace-level pipeline High Concurrency is enabled. Compatible untagged notebooks can be packed on a best-effort basis. Use the same tag to request sharing and distinct tags to create explicit isolation boundaries.
-
-### Add a Custom Live Pool when startup latency has business value
-
-Choose D when the first notebook must start predictably and the additional CU consumption is justified by the service-level objective. The strongest cases are predictable production windows where Starter Pools trigger provisioning because of MPEs, custom libraries, Spark properties, or environment personalization.
-
-If a roughly six-and-a-half-minute pipeline is acceptable, C is the better efficiency choice. If the target requires approximately three minutes, the right-sized combined configuration is justified by the measured latency improvement.
-
-### Size hydrated clusters from independent applications
-
-The product-confirmed single-use behavior makes this a direct sizing exercise:
+The benchmark represents one ETL pipeline with three consecutive notebook activities:
 
 ```text
-required hydrated clusters per cycle
-  = expected independent Spark session starts
+Bronze notebook -> Silver notebook -> Gold notebook
 ```
 
-Apply High Concurrency grouping first, then size the Live Pool for the remaining independent applications. In this test, B required three independent applications while D required one. Configuring D with one hydrated cluster avoided keeping unnecessary clusters ready.
+Each notebook simulates the work of its medallion stage by running a different selection of TPC-DS SF100 queries with [LakeBench][lakebench]. The labels describe the notebooks' roles in the pipeline; the benchmark does not attempt to reproduce every transformation found in a production Bronze, Silver, or Gold layer.
 
-### Keep the Live Pool window and idle settings tight
+The comparison answers two immediate questions: how many CUs does the complete pipeline consume, and how long does it take? The more reusable insight, however, is **why the configurations differ**. Startup path, application reuse, prepared capacity, and library installation can matter as much as the transformations themselves.
 
-Start hydration early enough to meet the service-level window and verify availability before submission, but avoid a broader schedule than the workload requires. Unused hydrated clusters consume capacity until idle deactivation removes them.
+### Configurations compared
 
-Set `livy.rsc.repl.session.driver.idle.timeout` from the longest expected gap between compatible notebook activities. The two-minute setting worked for this immediately sequential pipeline. Increase it only when intervening non-Spark activities require a longer reuse window.
-
-### Measure notebook and environment CU together
-
-Notebook-only metrics can make Live Pool configurations appear cheaper than they are. Include `Custom Pool Startup` and `Custom Pool Ready` environment operations, and exclude unrelated pipeline orchestration consistently. Under provisioned capacity, this measures headroom and efficiency rather than a change to the fixed F32 invoice. Under Autoscale Billing for Spark, the CU-time difference can affect the bill directly.
-
-## Practical decision guide
-
-| Workload requirement | Recommended starting point | Evidence from this benchmark |
+| Scenario | Compute path | How the three notebooks run |
 | --- | --- | --- |
-| Lowest CU consumption for compatible sequential notebooks | On-demand custom pool with High Concurrency | C used 1,430.39 CU-s and was 45.0% faster than S |
-| Lowest latency for a predictable window | Right-sized Custom Live Pool with High Concurrency | D averaged 192.60 s |
-| Independent sessions with strict warm-start requirement | Custom Live Pool without HC, sized for every session start | B was fast but had the highest CU consumption |
-| No strict latency target or unpredictable schedule | Starter or on-demand compute | Avoid maintaining unused hydrated capacity |
-| Different identities, lakehouses, libraries, or Spark settings | Separate sessions or tags | Sharing compatibility is not satisfied |
-| Long non-Spark gaps between notebook stages | HC with a tuned driver timeout | Timeout must exceed the expected gap |
-| Heavy simultaneous joins and shuffles | Benchmark shared and separate sessions | Shared executors can introduce contention |
+| S | Starter Pool | Three isolated Spark applications |
+| A | On-demand custom pool | Three isolated Spark applications |
+| B | Custom Live Pool | Three isolated Spark applications |
+| C | On-demand custom pool | One shared High Concurrency application |
+| D | Custom Live Pool | One shared High Concurrency application |
+| E | Starter Pool | One shared High Concurrency application |
 
-## Conclusions
+To compare the configurations rather than differences in query execution, the analysis normalizes each notebook to approximately 420 seconds of work at 12 CUs. That gives every pipeline the same base workload of 15,120 CU-seconds. It then preserves the measured application-start, High Concurrency attachment, orchestration, and Live Pool Environment costs. Starter Pool scenarios also include the observed cost of installing the benchmark libraries.
 
-The measurements reinforce that the correct optimization unit is the **Spark application lifecycle**, not the individual notebook.
+### Results
 
-High Concurrency delivered the best CU efficiency because it reduced three session lifecycles to one. A right-sized Custom Live Pool plus High Concurrency delivered the fastest pipeline because it removed the first acquisition delay and reused that application for later stages. Live Pool without sharing was fast, but overlapping independent sessions and driver tails made it the most capacity-intensive option.
+| Scenario | Total pipeline latency (s) | Two-run range (s) | Notebook CU-s | Environment CU-s | Total included CU-s |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| S | 2,279.3 | 2,269.5-2,289.1 | 19,440.0 | 0.0 | **19,440.0** |
+| A | 2,045.9 | 2,030.0-2,061.8 | 15,120.0 | 0.0 | **15,120.0** |
+| B | 1,420.3 | 1,390.5-1,450.2 | 15,120.0 | 859.4 | **15,979.4** |
+| C | 1,615.7 | 1,615.1-1,616.3 | 15,120.0 | 0.0 | **15,120.0** |
+| D | 1,405.4 | 1,403.7-1,407.1 | 15,120.0 | 315.2 | **15,435.2** |
+| E | 1,943.3 | 1,940.3-1,946.3 | 19,440.0 | 0.0 | **19,440.0** |
 
-My recommended sequence is:
+### Why CU consumption increases
 
-1. Establish a representative independent-session baseline.
-2. Enable High Concurrency for compatible notebook chains and measure contention.
-3. Add a Custom Live Pool only when predictable first-session latency is required.
-4. Size hydrated clusters from independent session starts after High Concurrency grouping.
-5. Tune schedule, idle deactivation, autoscale, and driver timeout together.
-6. Compare complete notebook and environment CU consumption against the service-level objective.
+From lowest to highest CU consumption:
 
-For the measured workload, choose **C** for maximum CU efficiency and **D** for minimum latency. The final production choice depends on whether the additional capacity required by D is justified by reducing the pipeline from approximately 391 seconds to 193 seconds.
+1. **A and C: 15,120 CU-s.** These are the baseline. Both execute the same notebook work on an on-demand custom pool and incur no Live Pool Environment charge. High Concurrency makes C faster than A, but it does not reduce the transformation cost in this model.
+2. **D: 15,435.2 CU-s.** D adds 315.2 Environment CU-s to hydrate Live Pool capacity. Its shared application allows Silver and Gold to attach to the application started by Bronze, so one prepared cluster supports the full pipeline.
+3. **B: 15,979.4 CU-s.** B consumes 544.2 CU-s more than D because its three isolated applications require more prepared Live Pool capacity. With a maximum of three hydrated clusters, capacity for later notebooks can sit ready while the earlier stage is still running.
+4. **S and E: 19,440 CU-s.** The Starter Pool scenarios add the library-installation cost to each notebook, raising consumption by 3,460.6 CU-s over B. E reuses one application and therefore finishes sooner than S, but this model charges the same library cost to all three activities in both scenarios.
+
+This ordering is specific to the controlled workload. In production, executor scaling, node size, session lifetime, parallel notebooks, and library caching can change the CU ranking.
+
+### Why total latency increases
+
+From lowest to highest total pipeline latency:
+
+1. **D: 1,405.4 seconds.** The first notebook starts from a hydrated cluster, then Silver and Gold attach to the same High Concurrency application. It combines a fast first session with fast subsequent attachments.
+2. **B: 1,420.3 seconds.** B also has prepared capacity, but starts a separate application for each notebook. Its two-run range overlaps D, so the small difference should be treated as effectively tied for this sample rather than proof that one is always faster.
+3. **C: 1,615.7 seconds.** C retains the High Concurrency attachment benefit, but Bronze must first wait for on-demand custom-pool provisioning. That cold first application accounts for most of the increase over B and D.
+4. **E: 1,943.3 seconds.** E also reuses an application, but the Starter Pool path includes library preparation before the shared application is ready. Silver and Gold still avoid creating new applications.
+5. **A: 2,045.9 seconds.** A avoids the Starter library cost, but each of the three notebooks waits for its own on-demand application. Repeated provisioning makes it slower than the shared Starter application in E.
+6. **S: 2,279.3 seconds.** S combines three isolated application starts with repeated library preparation, so it pays startup overhead at every medallion stage.
+
+The pattern is more important than the exact seconds: Live Pools reduce the wait for prepared compute, while High Concurrency removes repeated application startup after the first compatible notebook.
+
+### Practical guidance
+
+- Choose **On-demand custom pool with High Concurrency (C)** when CU efficiency matters most, the notebooks are compatible with High Concurrency, and the pipeline can tolerate a slower first session. It removes repeated application startup without paying to keep Live Pool capacity ready.
+- Choose **Custom Live Pool with High Concurrency (D)** when the pipeline has a tight completion target and a predictable schedule. Hydrate enough capacity for the first shared application, then let compatible downstream notebooks attach to it. Include Live Pool Environment CU when evaluating the improvement.
+- Choose **Custom Live Pool with isolated applications (B)** when notebooks need separate applications but startup must still be predictable. Size the Live Pool for the number of session starts in each hydration cycle, not only the peak number of concurrent notebooks.
+- A **Starter Pool** can remain the simplest choice when it already provides a fast start and the workload does not require custom libraries or settings. For library-heavy pipelines, publish stable dependencies in a Fabric Environment.
+- Tune the complete lifecycle: align the Live Pool schedule with pipeline arrival, leave enough space between idle deactivation and reactivation, and set the High Concurrency driver timeout to cover normal gaps between Bronze, Silver, and Gold without keeping compute alive unnecessarily.
+- Run your specific scenario and evaluate the cost of your specific tradeoffs. Measure application acquisition, attachment time, Environment CU, active cluster size, and end-to-end latency separately so an improvement in one component does not hide a regression in another.
+
 
 ## References
 
@@ -354,6 +342,7 @@ For the measured workload, choose **C** for maximum CU efficiency and **D** for 
 
 [live-overview]: https://learn.microsoft.com/en-us/fabric/data-engineering/custom-live-pools-overview
 [live-config]: https://learn.microsoft.com/en-us/fabric/data-engineering/custom-live-pools-configure
+[lakebench]: https://github.com/microsoft/LakeBench
 [hc-overview]: https://learn.microsoft.com/en-us/fabric/data-engineering/high-concurrency-overview
 [hc-pipelines]: https://learn.microsoft.com/en-us/fabric/data-engineering/configure-high-concurrency-session-notebooks-in-pipelines
 [spark-billing]: https://learn.microsoft.com/en-us/fabric/data-engineering/billing-capacity-management-for-spark

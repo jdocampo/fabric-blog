@@ -439,6 +439,21 @@ img {
   font-size: inherit;
 }
 
+.prose .mermaid {
+  width: min(100%, 46rem);
+  overflow-x: auto;
+  padding: 1rem;
+  background: var(--paper-panel);
+  border-left: 2px solid var(--signal);
+}
+
+.prose .mermaid svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+}
+
 .prose blockquote {
   margin-inline: 0;
   padding-left: 1.25rem;

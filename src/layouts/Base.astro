@@ -71,7 +71,7 @@ const path = Astro.url.pathname.replace(/\/$/, '') || '/';
     </footer>
 
     <script>
-      const diagrams = document.querySelectorAll('pre > code.language-mermaid');
+      const diagrams = document.querySelectorAll('pre[data-language="mermaid"] > code');
 
       if (diagrams.length > 0) {
         const { default: mermaid } = await import('mermaid');

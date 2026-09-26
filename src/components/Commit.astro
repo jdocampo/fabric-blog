@@ -1,5 +1,6 @@
 ---
 import { formatDate } from '../lib/posts';
+import { sitePath } from '../lib/urls';
 import type { Post } from '../lib/posts';
 
 interface Props {
@@ -17,14 +18,14 @@ const { post, index = 0 } = Astro.props;
   </div>
   <div class="commit__body">
     <h2 class="commit__title">
-      <a href={`/blog/${post.id}/`}>{post.data.title}</a>
+      <a href={sitePath(`blog/${post.id}/`)}>{post.data.title}</a>
     </h2>
     <p class="commit__desc">{post.data.description}</p>
     {
       post.data.tags.length > 0 && (
         <div class="tags">
           {post.data.tags.map((tag) => (
-            <a class="tag" href={`/tags/${tag}/`}>
+            <a class="tag" href={sitePath(`tags/${tag}/`)}>
               {tag}
             </a>
           ))}

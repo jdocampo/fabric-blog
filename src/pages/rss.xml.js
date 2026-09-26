@@ -1,5 +1,6 @@
 import rss from '@astrojs/rss';
 import { getPosts } from '../lib/posts';
+import { sitePath } from '../lib/urls';
 import { SITE } from '../site';
 
 export async function GET(context) {
@@ -12,7 +13,7 @@ export async function GET(context) {
       title: post.data.title,
       description: post.data.description,
       pubDate: post.data.pubDate,
-      link: `/blog/${post.id}/`,
+      link: sitePath(`blog/${post.id}/`),
     })),
   });
 }

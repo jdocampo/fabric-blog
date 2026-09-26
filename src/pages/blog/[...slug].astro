@@ -2,6 +2,7 @@
 import { render } from 'astro:content';
 import Base from '../../layouts/Base.astro';
 import { getPosts, formatDate } from '../../lib/posts';
+import { sitePath } from '../../lib/urls';
 
 export async function getStaticPaths() {
   const posts = await getPosts();
@@ -29,7 +30,7 @@ const { Content } = await render(post);
           post.data.tags.length > 0 && (
             <div class="tags">
               {post.data.tags.map((tag) => (
-                <a class="tag" href={`/tags/${tag}/`}>
+                <a class="tag" href={sitePath(`tags/${tag}/`)}>
                   {tag}
                 </a>
               ))}

@@ -1,5 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
+import { sitePath } from '../lib/urls';
 ---
 
 <Base title="Not found" description="No entry at this path.">
@@ -8,7 +9,7 @@ import Base from '../layouts/Base.astro';
       <p class="mono hero__eyebrow">404 · NO SUCH VERSION</p>
       <h1 class="hero__title">That entry isn't in the log.</h1>
       <p class="hero__lede">
-        The path may have changed when the post was renamed. <a href="/">Go back to the log</a>
+        The path may have changed when the post was renamed. <a href={sitePath()}>Go back to the log</a>
         and pick it up from there.
       </p>
     </div>

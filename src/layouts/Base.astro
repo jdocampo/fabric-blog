@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import { sitePath } from '../lib/urls';
 import { SITE } from '../site';
 
 interface Props {
@@ -11,7 +12,10 @@ interface Props {
 const { title, description = SITE.description, canonical } = Astro.props;
 const pageTitle = title ? `${title} — ${SITE.title}` : `${SITE.title} — ${SITE.role}`;
 const canonicalURL = canonical ?? new URL(Astro.url.pathname, Astro.site).href;
-const path = Astro.url.pathname.replace(/\/$/, '') || '/';
+const path = Astro.url.pathname.replace(/\/$/, '');
+const homePath = sitePath().replace(/\/$/, '');
+const aboutPath = sitePath('about/').replace(/\/$/, '');
+const rssPath = sitePath('rss.xml');
 ---
 
 <!doctype html>
@@ -22,7 +26,7 @@ const path = Astro.url.pathname.replace(/\/$/, '') || '/';
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonicalURL} />
-    <link rel="alternate" type="application/rss+xml" title={SITE.title} href="/rss.xml" />
+    <link rel="alternate" type="application/rss+xml" title={SITE.title} href={rssPath} />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
@@ -40,11 +44,11 @@ const path = Astro.url.pathname.replace(/\/$/, '') || '/';
 
     <header class="masthead">
       <div class="shell masthead__inner">
-        <a class="masthead__name" href="/">{SITE.title}</a>
+        <a class="masthead__name" href={sitePath()}>{SITE.title}</a>
         <nav class="masthead__nav" aria-label="Primary">
-          <a href="/" aria-current={path === '/' ? 'page' : undefined}>Log</a>
-          <a href="/about" aria-current={path === '/about' ? 'page' : undefined}>About</a>
-          <a href="/rss.xml">RSS</a>
+          <a href={sitePath()} aria-current={path === homePath ? 'page' : undefined}>Log</a>
+          <a href={sitePath('about/')} aria-current={path === aboutPath ? 'page' : undefined}>About</a>
+          <a href={rssPath}>RSS</a>
         </nav>
       </div>
     </header>

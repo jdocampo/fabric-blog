@@ -117,7 +117,15 @@ src/
 
 The index is laid out as an append-only log because that's what a blog is. Each post gets
 a version stamp (`v0001`, `v0002`…) assigned by publication order and it never changes,
-so the newest post always has the highest number. Entries hang off a single spine rule.
+so the newest post always has the highest number. On mobile and tablet, entries hang off
+a single spine rule. At viewport widths of 64rem (1024px at the default font size) and
+above, the shell expands and homepage and tag listings become a two-column card grid.
+At 90rem (1440px), listings use three columns. Each desktop card keeps its version stamp,
+date, description and clickable tags; entries remain ordered newest first.
+Article content is centered and widens from 34rem to 48rem on desktop, with code blocks
+and diagrams using the full reading width. About retains its centered, narrow reading
+measure. Navigation and the mobile layout stay unchanged.
+
 All colour lives in `src/styles/global.css` under `:root` — the magenta is deliberately
 spent only on commit stamps and link hovers, so change that one token and the whole site
 follows.

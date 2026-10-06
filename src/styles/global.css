@@ -522,3 +522,78 @@ img {
     font-size: 0.66rem;
   }
 }
+
+@media (min-width: 64rem) {
+  .shell {
+    max-width: 90rem;
+  }
+
+  .log__list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+  }
+
+  .commit {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    gap: 0;
+    padding: 1.5rem;
+    border: 1px solid var(--rule);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .commit::before {
+    display: none;
+  }
+
+  .commit::after {
+    left: 1.5rem;
+    top: 2rem;
+  }
+
+  .commit__stamp {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    padding: 0 0 1.25rem 1rem;
+    text-align: left;
+  }
+
+  .commit__body {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+  }
+
+  .commit__title {
+    font-size: 1.6rem;
+  }
+
+  .commit .tags {
+    margin-top: auto;
+    padding-top: 1rem;
+  }
+
+  .article__head,
+  .prose {
+    margin-inline: auto;
+  }
+
+  .article--post {
+    --measure: 48rem;
+  }
+
+  .article--post .prose pre,
+  .article--post .prose .mermaid {
+    width: 100%;
+  }
+}
+
+@media (min-width: 90rem) {
+  .log__list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

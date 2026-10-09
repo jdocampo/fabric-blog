@@ -1,13 +1,15 @@
 ---
 title: 'Faster or cheaper? Choosing Custom Live Pools and High Concurrency for Microsoft Fabric medallion ETL pipelines'
 description: 'Performance and CU trade-offs across Starter Pools, Custom Live Pools, and High Concurrency for a Bronze-Silver-Gold pipeline.'
-pubDate: 2026-09-01
+pubDate: 2026-10-05
 updatedDate: 2026-10-08
 tags: ['fabric', 'spark', 'data-engineering', 'performance']
 draft: false
 ---
 
 # Faster or cheaper? Choosing Custom Live Pools and High Concurrency for Microsoft Fabric medallion ETL pipelines
+
+*Last updated: 8 October 2026 to refresh reference links.*
 
 ## Motivation: answering the Spark cost-performance question
 

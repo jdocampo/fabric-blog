@@ -2,6 +2,7 @@
 import Base from '../layouts/Base.astro';
 import Commit from '../components/Commit.astro';
 import { getPosts } from '../lib/posts';
+import { SITE } from '../site';
 
 const posts = await getPosts();
 const head = posts[0];
@@ -13,10 +14,9 @@ const head = posts[0];
       <p class="mono hero__eyebrow">
         HEAD → {head ? `${head.version} · ${head.data.pubDate.toISOString().slice(0, 10)}` : 'empty log'}
       </p>
-      <h1 class="hero__title">Working notes from inside <em>the lakehouse</em>.</h1>
+      <h1 class="hero__title">Data Engineering <em>Field Notes</em></h1>
       <p class="hero__lede">
-        Spark tuning, Delta table maintenance and the parts of Microsoft Fabric the docs
-        leave out. Written down while the job was still running, so the details survive.
+        {SITE.description}
       </p>
     </div>
   </section>

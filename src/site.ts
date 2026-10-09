@@ -1,8 +1,8 @@
 export const SITE = {
-  title: 'Jorge Docampo Carro',
+  title: 'Data Engineering Field Notes',
   role: 'Data engineering · Microsoft Fabric',
   description:
-    'Notes on Microsoft Fabric, Apache Spark and Delta Lake — written while the logs were still open.',
+    'Technical notes on Microsoft Fabric, Apache Spark and Delta Lake, drawn from my experience working with customers. A closer look at data platform design, performance tuning and practical engineering decisions.',
   author: 'Jorge Docampo Carro',
   lang: 'en',
   links: [

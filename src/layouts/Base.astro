@@ -95,5 +95,15 @@ const rssPath = sitePath('rss.xml');
         await mermaid.run();
       }
     </script>
+    {
+      import.meta.env.PROD && (
+        <script
+          is:inline
+          type="module"
+          src="https://static.cloudflareinsights.com/beacon.min.js"
+          data-cf-beacon='{"token": "87ca197bdf18435dbc2c05fe172a6288"}'
+        />
+      )
+    }
   </body>
 </html>

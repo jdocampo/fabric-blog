@@ -132,12 +132,21 @@ follows.
 
 Dark mode follows the system setting. No toggle, no flash.
 
+## Analytics
+
+Cloudflare Web Analytics is included in `src/layouts/Base.astro` for production
+builds only; `npm run dev` does not load the tracker. The beacon token is a public
+site identifier, not an API credential.
+
+The site remains hosted on GitHub Pages; Cloudflare hosting and DNS changes are
+not required. In Cloudflare, configure Web Analytics for `jdocampo.github.io` and
+filter article metrics to paths under `/fabric-blog/blog/`. Tracking starts after
+deployment and does not backfill past views.
+
 ## Things you'll probably want next
 
 - **Comments** — [Giscus](https://giscus.app), backed by GitHub Discussions. Needs a public
   repo for the discussions, which can be a separate one from this.
 - **Search** — [Pagefind](https://pagefind.app), runs after `npm run build` and indexes
   `dist`. Add it as a post-build step in the workflow.
-- **Analytics** — anything that doesn't need a cookie banner: Plausible, Fathom, or
-  Cloudflare Web Analytics if you end up hosting there.
 - **Open Graph images** — `astro-og-canvas` generates one per post at build time.

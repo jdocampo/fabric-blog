@@ -10,9 +10,12 @@ draft: false
 
 A source table receives new data at an unpredictable time. A Materialized Lake View (MLV) transforms that table for downstream consumers. How do you refresh the view after the write, without polling on a fixed schedule or adding a refresh call to every ingestion notebook?
 
-Microsoft Fabric supports **event-triggered MLV refresh using OneLake events**. The useful signal for a Delta table is the publication of a transaction-log commit, not every file operation associated with the write.
+Microsoft Fabric supports **event-triggered MLV refresh**, a new feature in **Preview**, using OneLake events or supported job events. Before subscribing directly to a Delta table's storage operations, consider more consistent ways to signal that the source data is ready:
 
-This article explains how to configure the trigger using generic names and a small example.
+- **Trigger on successful notebook or pipeline completion.** If a Fabric notebook or Data Factory pipeline performs the Delta table update, use its completion job event to start the MLV refresh. This ties the trigger to completion of the ingestion work rather than its individual file operations.
+- **Write a marker file to the lakehouse's Files section.** After the table update completes, write a file to a dedicated folder and configure OneLake event-triggered refresh to watch that marker path. This also supports more complex readiness conditions, such as triggering once per day when all three source tables have each been updated at least once. Track those updates and publish the marker only the first time the condition is met that day. The coordinating logic can run outside Fabric: with the appropriate OneLake access, an external process can write the marker when the condition is true, and its matching OneLake event starts the MLV refresh.
+
+The following approach focuses on **optimizing a broad OneLake trigger on a Delta table** when a direct table-level subscription is the appropriate choice. The useful signal is publication of a transaction-log commit, not every file operation associated with the write. This article explains how to configure that trigger using generic names and a small example.
 
 > **Availability:** Event-triggered MLV refresh is documented as **Preview** at publication time. Confirm availability in your environment. Private link support is outside the documented preview scope. ([Scheduling documentation][schedules])
 

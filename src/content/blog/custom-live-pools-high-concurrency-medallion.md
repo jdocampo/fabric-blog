@@ -2,14 +2,14 @@
 title: 'Faster or cheaper? Choosing Custom Live Pools and High Concurrency for Microsoft Fabric medallion ETL pipelines'
 description: 'Performance and CU trade-offs across Starter Pools, Custom Live Pools, and High Concurrency for a Bronze-Silver-Gold pipeline.'
 pubDate: 2026-10-05
-updatedDate: 2026-10-08
+updatedDate: 2026-10-14
 tags: ['fabric', 'spark', 'data-engineering', 'performance']
 draft: false
 ---
 
 # Faster or cheaper? Choosing Custom Live Pools and High Concurrency for Microsoft Fabric medallion ETL pipelines
 
-*Last updated: 8 October 2026 to refresh reference links.*
+*Last updated: 14 October 2026 to add a measured mitigation for CU consumed after the final High Concurrency notebook finishes.*
 
 ## Motivation: answering the Spark cost-performance question
 
@@ -315,6 +315,8 @@ High Concurrency changes that allocation pattern. Instead of starting each stage
 
 The **CU used after the last notebook finishes also matters**. In the selected HC runs, approximate consumption after the final notebook completed represented about 15-18% of observed notebook CU. That consumption is already included in the table, not an extra charge to add again. Evaluate extending session lifetime very carefully alongside notebook execution and orchestration gaps.
 
+> **When the notebook is definitely the last consumer, explicitly stop the shared session.** In a [follow-up with three matched CLP-HC control/stop pairs][hc-stop-details], calling `notebookutils.session.stop(detach=False)` as Gold's final action stopped the shared Spark application, and all six pipelines completed successfully. Mean approximate CU consumed after Gold finished fell from **1,316.7 to 170.3 CU-s** in that follow-up; shutdown consumption was reduced, not eliminated. Use this only when no other notebook is running in, or still needs to attach to, that session, including parallel branches and planned retries. `detach=False` stops the **whole shared session**, rather than merely detaching the current notebook. Finish all required work and evidence writes before the call; do not rely on subsequent cells executing. It does not remove CU already consumed, CLP preparation CU, or pipeline orchestration CU. The original table above remains the natural-closure benchmark, not a recalculation with this mitigation.
+
 Configuring a fixed-size cluster could make notebook CU consumption more similar by removing scale-up timing differences, although execution duration and session lifetime would still affect the result. I deliberately retained autoscaling to reflect a scenario closer to real-world operation rather than forcing identical allocation curves. Library-only consumption was not isolated, so these results do not establish a fixed Starter Pool library-installation surcharge.
 
 ### Understanding latency and the overall trade-off
@@ -351,6 +353,7 @@ Future work on returning clusters to a Custom Live Pool after a session ends cou
 [live-config]: https://learn.microsoft.com/en-us/fabric/data-engineering/custom-live-pools-configure
 [live-api-howto]: ../manage-custom-live-pools-through-apis/
 [benchmark-details]: ../../resources/custom-live-pools-benchmark/
+[hc-stop-details]: ../../resources/custom-live-pools-benchmark/#follow-up-stopping-the-final-hc-session
 [cu-monitoring]: ../monitor-cu-usage-capacity-operation-events/
 [lakebench]: https://github.com/microsoft/LakeBench
 [hc-overview]: https://learn.microsoft.com/en-us/fabric/data-engineering/high-concurrency-overview

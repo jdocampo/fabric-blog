@@ -4,7 +4,7 @@ title: 'Custom Live Pools and High Concurrency: benchmark details and replicatio
 description: 'Selected-run results, notebook timing, cluster allocation, CU accounting, and the protocol behind the v0001 benchmark.'
 ---
 
-This resource supports [v0001: Faster or cheaper?][article]. It documents the **three selected runs per scenario** used in that article: 18 pipelines, 54 notebook activities, 1,530 query executions, and 36 distinct billed notebook sessions. Measurements were captured on **7 October 2026**.
+This resource supports [v0001: Faster or cheaper?][article]. The original benchmark documents the **three selected runs per scenario** used in that article: 18 pipelines, 54 notebook activities, 1,530 query executions, and 36 distinct billed notebook sessions. Those measurements were captured on **7 October 2026**. A separate [14 October follow-up](#follow-up-stopping-the-final-hc-session) tests explicit shutdown after the final HC notebook; it does not replace the original results.
 
 The same physical runs determine both latency and CU. Selection was based on pipeline latency, not on choosing the least expensive CU samples. This is a selected comparison, not a statistical guarantee of typical performance. Run labels preserve the original repetition number: `SP-R2`, for example, is the selected second repetition of SP.
 
@@ -18,6 +18,7 @@ The page contains results and replication instructions, not downloadable noteboo
 - [Notebook timing and charging](#notebook-timing-and-charging)
 - [Cluster allocation and notebook CU](#cluster-allocation-and-notebook-cu)
 - [Accounting and limitations](#accounting-and-limitations)
+- [Follow-up: stopping the final HC session](#follow-up-stopping-the-final-hc-session)
 - [How to repeat the benchmark](#how-to-repeat-the-benchmark)
 - [References](#references)
 
@@ -273,6 +274,53 @@ The three-minute wait after observed readiness was a submission control, not an 
 **Initialization:** mean CU before the first preflight marker was 240.271 for SP, 330.863 for OD, 259.941 for CLP, 161.857 for SP-HC, 130.549 for OD-HC, and 105.986 for CLP-HC. These approximate envelopes include more than library preparation; do not relabel them as library-only charges.
 
 The session collectors waited for natural completion and did not cancel or explicitly stop the measured sessions. CU after notebooks finish is therefore not an artifact of a collector-driven shutdown.
+
+## Follow-up: stopping the final HC session
+
+On **14 October 2026**, three matched CLP-HC control/stop pairs tested whether `notebookutils.session.stop(detach=False)` reduces CU consumption after the final notebook. These were **six additional runs**, not a new selection from the original benchmark.
+
+The test used the same workspace's active F32 capacity in West Central US, existing published CLP-HC environment, Runtime 2.0, LakeBench 1.2.0, prepared SF100 tables, and exact Bronze/Silver/Gold query order above. Driver/executor sizing, autoscaling, acceleration, and one hydrated cluster were retained. Each pipeline was submitted after the original readiness control: 180 seconds after observing a ready cluster. Owned activation details and preexisting Spark application timestamps confirmed warm acquisition.
+
+Isolated notebook/pipeline copies used a unique session tag per trial. The order was fixed before measurement: **control/stop, stop/control, control/stop**. Runs were serial, with no other workspace Spark sessions active. Each trial used one shared application for its three activities, distinct from the other five trials. Table IDs, Delta versions, file counts, and byte sizes were checked before each stage and remained unchanged across all six runs. Snapshot checks and durable evidence writes were outside the timed query batches and present in both arms; this instrumentation is another reason not to merge these totals into the original comparison.
+
+Control sessions closed naturally. In the stop arm, Gold first completed and validated its queries, saved results and a UTC shutdown-request marker, then executed this as its final action:
+
+```python
+notebookutils.session.stop(detach=False)
+```
+
+The runtime exposed the signature `(detach=True)`. Its help distinguished the default HC behavior, detaching the current notebook, from `detach=False`, stopping the session. That description was not treated as proof: the experiment followed the actual shared session and its billing operation to closure, without an external cancellation or another stop API.
+
+### Observed results
+
+**All six pipelines completed, all 18 notebook activities succeeded, and all 510 queries passed the runner's result checks.** All six shared sessions reached `Succeeded`. The table follows actual execution order; no successful run was excluded.
+
+| Pair / arm | Session ends after Gold s | Charging ends after Gold s | Approximate CU-s after Gold | Total notebook CU-s | Environment CU-s |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 / control | 130.681 | 130.978 | 1,571.740 | 10,068.255 | 291.482 |
+| 1 / stop | 18.495 | 19.162 | 229.944 | 8,586.977 | 215.183 |
+| 2 / stop | 11.763 | 12.516 | 150.191 | 8,269.000 | 214.346 |
+| 2 / control | 77.576 | 78.420 | 941.037 | 8,885.005 | 214.477 |
+| 3 / control | 119.280 | 119.789 | 1,437.467 | 10,359.399 | 215.359 |
+| 3 / stop | 10.265 | 10.901 | 130.815 | 8,789.137 | 215.215 |
+
+Here, **Gold completion** is the final notebook's service-reported `runEndTime`, not pipeline end or event arrival. Cross-checking the marker written before the stop call, treatment sessions ended **11.421-19.708 seconds after the shutdown request**, and charging ended **12.057-20.375 seconds after it**. Billing endpoints were within one second of session end in all six runs.
+
+Mean approximate post-notebook consumption fell from **1,316.748 CU-s for controls to 170.317 CU-s with explicit stop**, an **87.1% reduction in this sample**. Each matched pair showed a reduction. Shutdown still consumed CU: the call did not immediately deallocate all resources or eliminate the tail. Mean total notebook consumption was 9,770.886 versus 8,548.371 CU-s, but differences in query duration and autoscaling also affect that total; do not attribute every CU of that difference solely to shutdown.
+
+Pipeline orchestration was separately observed at **60.480 CU-s per run**. Environment consumption above was attributed to each owned CLP activation; it was not folded into notebook CU, and its variation is not evidence that stopping Gold makes hydration cheaper.
+
+### Accounting, scope, and safe use
+
+The [Capacity Operation Events method][cu-monitoring] was applied with exact workspace, capacity, item, and operation identities. HC session CU was counted once. Deliveries were deduplicated by CloudEvent ID, checked for conflicting payloads and invalid CU, and incremental progress plus terminal `Stopped` notebook records were summed. Later extractions checked delayed delivery; the final two snapshots, separated by more than two minutes, had unchanged attributed CU totals for every trial.
+
+Post-Gold CU is a **phase estimate**, using a uniform average rate within each billing slice, not a separately metered operation. `consumptionStartTime` again behaved as the notebook slice endpoint. Reported durations reconciled with consecutive endpoints, so no nonzero notebook slice needed to be excluded from phase allocation. Total notebook CU is the direct sum of the attributed events; the phase estimate is already part of it.
+
+One initial setup submission was rejected before a notebook started because its session tag contained hyphens. The tag was corrected to letters, numbers, and underscores, and its unused owned activation was cancelled. That failed setup attempt is not one of the six measured workload runs; its preparation consumption is not included in their totals. A billing-query quoting error and an expired monitoring token were recovered without resubmitting completed or running workloads.
+
+The result confirms this mitigation for the **tested CLP-HC pipeline configuration**, not a guaranteed saving for every pool, runtime, or workload. Only stop when Gold is known to be the **last consumer of the whole shared session**, including concurrent branches and future attachments or planned retries. Being the last notebook in one branch is insufficient. Complete required output writes and cleanup before calling it; a subsequent cell must not be needed. If another notebook still needs the session, leave it running rather than destroy its shared application.
+
+Explicit shutdown reduces the final session-retention tail; it does not reverse earlier execution CU, remove gaps between stages, or eliminate CLP preparation and orchestration consumption. The original natural-closure measurements and recommendations above remain intact. After this follow-up, the workspace's original HC setting was restored, the published environment was unchanged, all experiment-owned activation schedules were disabled, and all owned jobs and sessions were terminal. Inert test copies were retained for snapshot inspection.
 
 ## How to repeat the benchmark
 

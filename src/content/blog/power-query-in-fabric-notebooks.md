@@ -10,15 +10,9 @@ draft: false
 
 The [November 2026 Fabric update](https://community.fabric.microsoft.com/blog/fbc_fabricupdatesblogs/fabric-november-2026-feature-summary/5414311#community-5414311-mcetoc_1k78v7lte_4) added **Power Query in Fabric notebooks (preview)**. The `notebookutils.powerquery` module runs a Power Query M query from a notebook, through an existing Fabric connection, and returns the result as a PySpark DataFrame.
 
-That gives notebooks something they couldn't do before: reach sources that only Power Query can reach, such as **on-premises systems behind an on-premises data gateway**.
+The useful part is reusing Power Query connectors and **on-premises data gateway connections** from PySpark, without making Spark itself connect to the source.
 
-This article covers:
-
-- how the feature works;
-- which connections you can use, and how to check them;
-- two use cases: calling on-premises APIs, and calling web APIs that only accept traffic from known IP addresses;
-- how to monitor the cost;
-- the current limitations.
+> **Not designed for enterprise-scale ingestion.** This notebook-and-gateway pattern is for targeted API reads and notebook enrichment, not bulk data ingestion. For enterprise-grade data volumes, follow current Fabric ingestion best practices: use [Data Pipeline Copy activity](https://learn.microsoft.com/en-us/fabric/data-factory/copy-data-activity), [Mirroring](https://learn.microsoft.com/en-us/fabric/database/mirrored-database/overview) for supported sources, or another ingestion service appropriate to the workload.
 
 ## 1. How it works
 
@@ -75,7 +69,7 @@ Some points to keep in mind:
 - The M script still names the source (server, database, URL), and those details must match the connection you pass.
 - Use the connection ID if two connections share a name.
 - If you pass a list of connections, every query in the document can use any of them. They aren't matched to queries by position.
-- Gateway connections are passed exactly the same way. The query then runs on your gateway, not in the cloud.
+- Gateway connections are passed exactly the same way. Power Query evaluates the query through the gateway; the notebook and returned DataFrame remain in Fabric.
 
 To return several queries in one call, send a full `section` document and a list of names:
 
@@ -98,25 +92,29 @@ display(results["SelectedProducts"])
 
 ## 2. Which connections can a notebook use?
 
-A connection works with `executeQuery` only when all of these are true:
+Start with a Fabric connection you have permission to use. For **cloud connections**, check these requirements:
 
 1. **It allows code-first access.** When you create the connection, select **Allow Code-First Artifacts like Notebooks to access this connection (Preview)**. You can't change this setting later. Connections created from the notebook's **Connections** pane have it selected by default.
-2. **Its connection type and credential type are allowed in notebooks.** OAuth2 isn't supported.
+2. **Its connection type and credential type are allowed in notebooks.** The `OAuth2` credential type isn't supported.
 3. **Your tenant allows it.** A tenant setting controls Fabric connections in notebooks. It is on by default.
 
-To see which connection types and credential types are allowed, use the [List Supported Connection Types](https://learn.microsoft.com/en-us/rest/api/fabric/core/connections/list-supported-connection-types) API. Each connection type in the response has a field called `supportedCredentialTypesForUsageInUserControlledCode`. It lists the credential types allowed in items that run your own code, such as notebooks. If the field is empty, that connection type can't be used from a notebook.
+To check cloud connector support, use the [List Supported Connection Types](https://learn.microsoft.com/en-us/rest/api/fabric/core/connections/list-supported-connection-types) API. Look for **`supportedCredentialTypesForUsageInUserControlledCode`**, not just `supportedCredentialTypes`. A non-empty list identifies credential types allowed in code-first items such as notebooks; your connection must use one of those types.
 
-With the Azure CLI:
+With the Azure CLI signed in to your Fabric tenant:
 
 ```bash
 az rest --method get \
   --url "https://api.fabric.microsoft.com/v1/connections/supportedConnectionTypes" \
   --resource "https://api.fabric.microsoft.com" \
-  --query "value[?supportedCredentialTypesForUsageInUserControlledCode].{connectionType: type, credentials: join(', ', supportedCredentialTypesForUsageInUserControlledCode)}" \
-  -o table
+  --query "{connections: value[?supportedCredentialTypesForUsageInUserControlledCode].{connectionType: type, credentials: supportedCredentialTypesForUsageInUserControlledCode}, continuationUri: continuationUri}" \
+  -o json
 ```
 
-The call needs the `Connection.Read.All` or `Connection.ReadWrite.All` scope. To list what a specific gateway supports, add `?gatewayId=<gateway-id>` to the URL.
+The call needs the `Connection.Read.All` or `Connection.ReadWrite.All` scope. If `continuationUri` is returned, repeat the call using that URL until it is empty.
+
+This lists **connection types**, not your saved connections. Find your own connections and IDs in **Manage connections and gateways**, and check your access permissions. For notebook-bound cloud connections, the **Connections** pane also provides **Connect**, **Copy ID**, and **Check status**.
+
+For a **gateway**, add `?gatewayId=<gateway-id>` to the API URL to inspect its supported types; you need permission to that gateway. The cloud list below is not a gateway compatibility list. Gateway-backed Power Query access requires a connection configured for the supported source on that gateway.
 
 On 2026-11-27, the call returned 11 cloud connection types:
 
@@ -134,38 +132,36 @@ On 2026-11-27, the call returned 11 cloud connection types:
 | AzureBlobs | Anonymous, Key, SharedAccessSignature, ServicePrincipal, WorkspaceIdentity |
 | AzureDataLakeStorage | Key, SharedAccessSignature, ServicePrincipal, WorkspaceIdentity |
 
-The feature is in preview, so this list will change. Run the call again rather than relying on the table.
+The feature is in preview, so this list may change. Run the call again rather than relying on the table.
 
 ## 3. Use case: calling an on-premises API
 
-Spark can't reach an API that only lives on your corporate network. An [on-premises data gateway](https://learn.microsoft.com/en-us/data-integration/gateway/service-gateway-install) can. With `executeQuery`, the notebook sends the M query to the gateway, the gateway calls the API, and the result comes back as a DataFrame.
+If your Spark environment has no network route to an internal API, an [on-premises data gateway](https://learn.microsoft.com/en-us/data-integration/gateway/service-gateway-install) provides a route through a machine on your network. With `executeQuery`, Power Query uses the gateway to call the API and returns the result as a DataFrame.
 
 The setup:
 
-1. Install a gateway on a machine that can reach the API.
-2. In Fabric, create a **Web** connection on that gateway.
-   - **URL**: the API's base URL, for example `http://onprem-api:8080/api`.
-   - **Authentication**: Anonymous. The API's own token travels in a request header (see the POST example).
+1. Install a standard-mode gateway on a machine that can resolve the API's hostname, reach it, and trust its HTTPS certificate.
+2. In Fabric, create a **Web** connection on that gateway using the API's base URL, for example `https://api.internal.example/api`. Use **Anonymous** for these examples; in the authenticated example, the API's token travels in a request header instead.
 3. Pass that connection's name or ID to `executeQuery`.
 
-A GET request:
+These examples expect a JSON array of order objects with `OrderId`, `Region`, and `Quantity` fields. A GET request:
 
 ```python
 df = notebookutils.powerquery.executeQuery("Orders", """
 Table.FromRecords(
-    Json.Document(Web.Contents("http://onprem-api:8080/api", [RelativePath = "orders"])),
+    Json.Document(Web.Contents("https://api.internal.example/api", [RelativePath = "orders"])),
     type table [OrderId = Int64.Type, Region = text, Quantity = Int64.Type])
 """, connections="<gateway-web-connection>")
 display(df)
 ```
 
-A POST request with a JSON body and a bearer token kept in Azure Key Vault:
+A **read-only search** can also use POST with a JSON body and a bearer token kept in Azure Key Vault. The notebook identity needs permission to read the secret. [`Web.Contents`](https://learn.microsoft.com/en-us/powerquery-m/web-contents) requires Anonymous connection authentication for POST; the API still validates the bearer token:
 
 ```python
 token = notebookutils.credentials.getSecret("https://<vault>.vault.azure.net/", "<api-token>")
 df = notebookutils.powerquery.executeQuery("Search", f"""
 Table.FromRecords(
-    Json.Document(Web.Contents("http://onprem-api:8080/api", [
+    Json.Document(Web.Contents("https://api.internal.example/api", [
         RelativePath = "search",
         Headers = [#"Content-Type" = "application/json", Authorization = "Bearer {token}"],
         Content = Json.FromValue([region = "South"])])),
@@ -174,36 +170,35 @@ Table.FromRecords(
 display(df)
 ```
 
-Two tips:
-
 - **The URL in `Web.Contents` must match the connection URL.** Keep the base URL identical, and put the rest of the path in `RelativePath` and any parameters in `Query`. That way Power Query matches the request to your connection.
 - **The token ends up inside the M text.** Read it from Key Vault as shown, and never print or log the script.
+- **Keep the API operation read-only.** A search over POST is not write-back support; don't use this pattern to create, update, or delete source data.
 
 ## 4. Use case: calling an IP-allowlisted web API
 
-Many partner and SaaS APIs only accept calls from an allowlist of IP addresses. Calling them from a notebook is hard, because neither Spark nor Power Query Online gives you a fixed outbound IP:
+Many partner and SaaS APIs only accept calls from an allowlist of IP addresses. With the default public network paths, you don't get a dedicated fixed outbound IP:
 
 - **Spark** (for example `requests` in a notebook) sends traffic from shared Azure IP ranges.
 - **A cloud connection** in `executeQuery` sends traffic from the shared Power Query Online ranges.
 
 Neither range is specific to your tenant, so allowlisting it would let in far more than your workload.
 
-The gateway changes that. With a gateway Web connection, the request leaves from the **gateway machine**, so the API sees that machine's public IP. The approach from section 3 works for internet APIs too: point the Web connection at the external API's base URL, and allowlist only the gateway's IP.
+With a gateway Web connection, the request leaves through the **gateway's network**. The API sees that network's public egress IP, which may belong to a NAT gateway, firewall, or proxy rather than the machine itself. The section 3 pattern works for internet APIs too: set both the Web connection and `Web.Contents` base URL to the external API, then allowlist that fixed egress IP. Keep API authentication in place.
 
 ```mermaid
 flowchart LR
     NB["Fabric notebook"]
     SP["Spark<br/>shared Azure IP ranges"]
     PQ["executeQuery + cloud connection<br/>shared Power Query Online ranges"]
-    GW["executeQuery + gateway connection<br/>gateway host with a static public IP"]
+    GW["executeQuery + gateway connection<br/>gateway network with a fixed egress IP"]
     API[("IP-allowlisted API")]
     ONP[("On-premises API")]
 
     NB --> SP
     NB --> PQ
     NB --> GW
-    SP -.->|not allowlisted| API
-    PQ -.->|not allowlisted| API
+    SP -.->|shared ranges not allowlisted| API
+    PQ -.->|shared ranges not allowlisted| API
     GW -->|"allowed: fixed source IP"| API
     GW --> ONP
 ```
@@ -218,7 +213,7 @@ For production:
 
 When a query runs on a **cloud connection**, the Power Query work runs outside your Spark session. Spark metrics (Monitoring hub, Spark UI, resource usage) don't show it.
 
-The [Fabric Capacity Metrics app](https://learn.microsoft.com/en-us/fabric/enterprise/metrics-app-compute-page) does show it. These executions appear as operations called **`Dataflows Gen2 Run Query API`**, charged to your capacity. They are attributed to the **notebook** that ran the query, not to the connection.
+The [Fabric Capacity Metrics app](https://learn.microsoft.com/en-us/fabric/enterprise/metrics-app-compute-page) does show it. These executions appear as **Billable** operations called **`Dataflows Gen2 Run Query API`**, charged to your capacity. They are attributed to the **notebook** that ran the query, not to the connection.
 
 To find it:
 
@@ -235,7 +230,7 @@ The notebook's Spark compute is a separate entry. It appears as the notebook's r
 These limits come from the documentation for the preview:
 
 - **Preview.** The behavior and the list of supported connections may change.
-- **Read-only.** There is no write-back to the source.
+- **Read operations only.** Write-back to the source isn't supported.
 - **Timeouts.** A query can run for up to 230 seconds, or 180 seconds through a gateway.
 - **Size limits.**
   - Query names: up to 80 characters.
@@ -243,9 +238,9 @@ These limits come from the documentation for the preview:
   - Connections: up to 100 per call.
 - **Multiple queries** need a full M document that starts with `section` and defines each query as `shared`.
 - **Connections.**
-  - OAuth2 isn't supported.
-  - The code-first checkbox can only be set when the connection is created.
-  - The tenant setting must stay enabled.
+  - The `OAuth2` credential type isn't supported for Fabric connections in notebooks.
+  - For cloud connections, the code-first checkbox can only be set when the connection is created, and the tenant setting must stay enabled.
+  - Gateway-backed access needs a connection configured for a supported source.
 
 ## Further reading
 

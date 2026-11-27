@@ -1,0 +1,15 @@
+flowchart LR
+    NB["Fabric notebook"]
+    SP["Spark<br/>shared Azure IP ranges"]
+    PQ["executeQuery + cloud connection<br/>shared Power Query Online ranges"]
+    GW["executeQuery + gateway connection<br/>gateway network with a fixed egress IP"]
+    API[("IP-allowlisted API")]
+    ONP[("On-premises API")]
+
+    NB --> SP
+    NB --> PQ
+    NB --> GW
+    SP -.->|shared ranges not allowlisted| API
+    PQ -.->|shared ranges not allowlisted| API
+    GW -->|"allowed: fixed source IP"| API
+    GW --> ONP
